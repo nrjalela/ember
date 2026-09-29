@@ -1,0 +1,1269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EMBER · Bushfire Risk Intelligence</title>
+<meta name="description" content="EMBER is a bushfire risk intelligence console: McArthur Mk5 FFDI, validated rate-of-spread and a wind-driven cellular-automaton fire model running live in the browser.">
+<meta name="theme-color" content="#07090b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2307090b'/%3E%3Cpath d='M16 4c2 6 8 8 8 15a8 8 0 0 1-16 0c0-4 2-6 4-8 0 3 1 5 3 5-1-4 0-8 1-12z' fill='%23ff6a13'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#06080a; --panel:#0b0f13; --panel-2:#0f141a; --line:#1b242d; --line-2:#26323d;
+  --text:#c8d3db; --text-hi:#eef3f6; --dim:#6b7c88; --dim-2:#4a5863;
+  --amber:#ffb000; --orange:#ff6a13; --red:#ff3b30; --green:#35d07f; --cyan:#4cc9f0;
+  --b-low:#3fa34d; --b-high:#2f8fe0; --b-vh:#f2c200; --b-sev:#ff8a00; --b-ext:#e5261f; --b-cat:#b3001b;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --cond:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --gap:8px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.4;-webkit-font-smoothing:antialiased}
+body{min-height:100vh;background:
+  radial-gradient(1200px 600px at 50% -200px,rgba(255,106,19,.07),transparent 70%),
+  repeating-linear-gradient(0deg,rgba(255,255,255,.012) 0 1px,transparent 1px 3px),var(--bg)}
+button,input{font:inherit;color:inherit}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---------- top bar ---------- */
+.topbar{display:flex;align-items:stretch;gap:0;border-bottom:1px solid var(--line-2);background:linear-gradient(#0c1116,#090c10);position:sticky;top:0;z-index:10}
+.brand{display:flex;align-items:center;gap:10px;padding:8px 16px;border-right:1px solid var(--line-2)}
+.brand svg{width:22px;height:22px}
+.brand b{font-family:var(--cond);font-weight:700;font-size:18px;letter-spacing:.28em;color:var(--text-hi)}
+.brand span{font-family:var(--cond);font-size:11px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase}
+.tb-cell{display:flex;flex-direction:column;justify-content:center;padding:6px 14px;border-right:1px solid var(--line);min-width:0}
+.tb-cell .k{font-family:var(--cond);font-size:9.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
+.tb-cell .v{font-size:13px;color:var(--text-hi);white-space:nowrap}
+.tb-spacer{flex:1}
+.band-pill{display:inline-block;padding:1px 8px;font-family:var(--cond);font-weight:700;letter-spacing:.12em;font-size:12px;color:#000;border-radius:1px}
+.led{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);margin-right:6px;vertical-align:middle}
+.led.warn{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.led.alert{background:var(--red);box-shadow:0 0 10px var(--red);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.25}}
+
+/* ---------- console grid ---------- */
+.console{display:grid;gap:var(--gap);padding:var(--gap);
+  grid-template-columns:300px minmax(0,1fr) 340px;
+  grid-template-areas:"wx map impact" "wx map rank" "wx model feed";
+  grid-template-rows:auto auto 1fr}
+.a-wx{grid-area:wx}.a-map{grid-area:map}.a-impact{grid-area:impact}.a-rank{grid-area:rank}.a-feed{grid-area:feed}.a-model{grid-area:model}
+.panel{background:var(--panel);border:1px solid var(--line);position:relative;min-width:0}
+.panel::before,.panel::after{content:"";position:absolute;width:8px;height:8px;border:1px solid var(--dim-2);pointer-events:none}
+.panel::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.panel::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.ph{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);font-family:var(--cond);font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--text)}
+.ph .idx{color:var(--orange);font-family:var(--mono);font-weight:500;letter-spacing:0}
+.ph .r{margin-left:auto;color:var(--dim);font-weight:400;letter-spacing:.1em;font-size:10px}
+.pb{padding:10px}
+
+/* ---------- weather ---------- */
+.gauge-wrap{position:relative;display:flex;justify-content:center}
+.gauge{width:100%;max-width:260px;display:block}
+.gauge .lbl{font-family:var(--mono);font-size:8px;fill:var(--dim)}
+.gauge .val{font-family:var(--mono);font-weight:600;font-size:34px;fill:var(--text-hi)}
+.gauge .unit{font-family:var(--cond);font-size:8.5px;letter-spacing:.2em;fill:var(--dim)}
+.gauge .band{font-family:var(--cond);font-weight:700;font-size:12px;letter-spacing:.18em}
+.readouts{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);margin:8px 0 12px}
+.readouts div{background:var(--panel-2);padding:6px 8px}
+.readouts .k{font-family:var(--cond);font-size:9.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+.readouts .v{font-size:14px;color:var(--text-hi)}
+.readouts .v small{font-size:10px;color:var(--dim)}
+.sub{font-family:var(--cond);font-size:10px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin:12px 0 6px;display:flex;align-items:center;gap:8px}
+.sub::after{content:"";flex:1;height:1px;background:var(--line)}
+.presets{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.btn{background:var(--panel-2);border:1px solid var(--line-2);color:var(--text);padding:6px 8px;cursor:pointer;text-align:left;font-size:11px;letter-spacing:.02em;transition:border-color .12s,background .12s}
+.btn:hover{border-color:var(--dim)}
+.btn:focus-visible,.compass:focus-visible,input[type=range]:focus-visible,canvas:focus-visible{outline:1px solid var(--amber);outline-offset:1px}
+.btn.on{border-color:var(--orange);background:rgba(255,106,19,.12);color:var(--text-hi)}
+.btn.wide{grid-column:1/-1}
+.btn.hot{border-color:rgba(255,59,48,.6);color:#ffb3ad}
+.btn small{display:block;color:var(--dim);font-size:9.5px}
+.slider{margin:8px 0 10px}
+.slider .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
+.slider label{font-family:var(--cond);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.slider output{font-size:13px;color:var(--text-hi)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;margin:0;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:linear-gradient(90deg,var(--orange) var(--p,50%),var(--line-2) var(--p,50%))}
+input[type=range]::-moz-range-track{height:3px;background:linear-gradient(90deg,var(--orange) var(--p,50%),var(--line-2) var(--p,50%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:16px;margin-top:-6.5px;background:var(--text-hi);border:1px solid #000;border-radius:1px}
+input[type=range]::-moz-range-thumb{width:9px;height:16px;background:var(--text-hi);border:1px solid #000;border-radius:1px}
+.wind-row{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center}
+.compass{width:150px;height:150px;touch-action:none;cursor:grab;display:block}
+.compass:active{cursor:grabbing}
+.compass .tick{stroke:var(--dim-2)}
+.compass .tick.maj{stroke:var(--dim)}
+.compass .card{font-family:var(--cond);font-weight:600;font-size:11px;fill:var(--dim)}
+.compass .card.n{fill:var(--orange)}
+.wind-meta .k{font-family:var(--cond);font-size:9.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+.wind-meta .v{font-size:15px;color:var(--text-hi);margin-bottom:6px}
+
+/* ---------- map ---------- */
+.map-bar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line)}
+.map-bar .btn{padding:4px 9px;text-align:center}
+.map-bar .grp{display:flex;gap:0}
+.map-bar .grp .btn+.btn{border-left:0}
+.map-bar .sep{width:1px;height:20px;background:var(--line-2);margin:0 4px}
+.map-bar .clock{margin-left:auto;font-size:13px;color:var(--text-hi);display:flex;gap:12px;align-items:center}
+.map-bar .clock span{color:var(--dim);font-size:10px;font-family:var(--cond);letter-spacing:.14em}
+.map-wrap{position:relative;aspect-ratio:180/112;background:#000;overflow:hidden}
+.map-wrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:manipulation}
+.hover{position:absolute;left:8px;top:8px;background:rgba(6,8,10,.82);border:1px solid var(--line-2);padding:5px 8px;font-size:10.5px;line-height:1.5;pointer-events:none;min-width:170px;backdrop-filter:blur(2px)}
+.hover .k{color:var(--dim)}
+.hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(6,8,10,.85);border:1px solid var(--orange);color:var(--text-hi);padding:6px 12px;font-family:var(--cond);letter-spacing:.16em;font-size:11px;text-transform:uppercase;pointer-events:none;white-space:nowrap;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{50%{border-color:rgba(255,106,19,.3)}}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;padding:7px 10px;border-top:1px solid var(--line);font-size:10px;color:var(--dim)}
+.legend i{display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px;border:1px solid rgba(255,255,255,.12)}
+
+/* ---------- model trace ---------- */
+.trace{font-size:11px;line-height:1.75;overflow-x:auto}
+.trace .ln{white-space:nowrap}
+.trace .c{color:var(--dim)}
+.trace .n{color:var(--amber)}
+.trace .res{color:var(--text-hi);font-weight:600}
+.trace .ref{color:var(--dim-2);font-size:10px;margin-top:6px;white-space:normal}
+
+/* ---------- impact ---------- */
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}
+.kpi{background:var(--panel);padding:9px 10px 10px}
+.kpi .k{font-family:var(--cond);font-size:9.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
+.kpi .v{font-size:24px;font-weight:500;color:var(--text-hi);line-height:1.15;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi .v small{font-size:11px;color:var(--dim);font-weight:400}
+.kpi .s{font-size:10px;color:var(--dim);margin-top:1px}
+.kpi.alert .v{color:var(--red)}
+.kpi.warn .v{color:var(--amber)}
+
+/* ---------- ranking ---------- */
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{font-family:var(--cond);font-weight:500;font-size:9.5px;letter-spacing:.12em;color:var(--dim);text-align:left;padding:5px 6px;border-bottom:1px solid var(--line);text-transform:uppercase}
+td{padding:5px 6px;border-bottom:1px solid rgba(27,36,45,.6);white-space:nowrap;font-variant-numeric:tabular-nums}
+td.num,th.num{text-align:right}
+.rbar{display:inline-block;width:32px;height:5px;background:var(--line-2);vertical-align:middle;margin-right:6px;position:relative}
+.rbar b{position:absolute;inset:0 auto 0 0;background:var(--amber)}
+.st{font-family:var(--cond);font-weight:700;font-size:9.5px;letter-spacing:.12em;padding:1px 5px;border:1px solid currentColor}
+.st.safe{color:var(--dim)}.st.advice{color:var(--cyan)}.st.watch{color:var(--amber)}.st.threat{color:var(--orange)}.st.impact{color:#fff;background:var(--red);border-color:var(--red)}
+
+/* ---------- feed ---------- */
+.feed{height:300px;overflow-y:auto;font-size:11px;padding:4px 0;scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+.feed .e{display:grid;grid-template-columns:60px 54px 1fr;gap:6px;padding:3px 10px;border-bottom:1px solid rgba(27,36,45,.45)}
+.feed .e.new{animation:flash 1.2s ease-out}
+@keyframes flash{from{background:rgba(255,176,0,.14)}}
+.feed .ts{color:var(--dim)}
+.feed .tag{font-family:var(--cond);font-weight:700;letter-spacing:.1em;font-size:10px}
+.tag.SYS{color:var(--dim)}.tag.WX{color:var(--cyan)}.tag.IGN{color:var(--orange)}.tag.SPOT{color:var(--amber)}.tag.ALERT{color:var(--orange)}.tag.IMPACT{color:var(--red)}.tag.FDI{color:var(--amber)}.tag.MODEL{color:var(--green)}
+
+footer{padding:10px 16px 18px;color:var(--dim-2);font-size:10px;display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between}
+footer a{color:var(--dim)}
+
+/* ---------- responsive ---------- */
+@media (max-width:1280px){
+  .console{grid-template-columns:280px minmax(0,1fr) 300px}
+}
+@media (max-width:1100px){
+  .console{grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    grid-template-areas:"map map" "wx impact" "wx rank" "wx feed" "model model";grid-template-rows:auto}
+  .tb-cell.opt{display:none}
+}
+@media (max-width:720px){
+  :root{--gap:6px}
+  .console{grid-template-columns:minmax(0,1fr);grid-template-areas:"map" "impact" "wx" "rank" "feed" "model"}
+  .brand span,.tb-cell.opt2{display:none}
+  .brand{padding:8px 12px}
+  .tb-cell{padding:5px 10px}
+  .map-bar .clock{margin-left:0;width:100%;justify-content:space-between}
+  .kpi .v{font-size:20px}
+  .feed{height:240px}
+  .hover{display:none}
+  .hint{font-size:10px;letter-spacing:.1em}
+  .col-risk{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3c2 6 9 8 9 16a9 9 0 0 1-18 0c0-4 2-7 4.5-9 0 3.5 1.2 5.5 3.5 5.5-1.2-4.5 0-9 1-12.5z" fill="#ff6a13"/><path d="M16 17c1 2.5 4 3.5 4 6.5a4 4 0 0 1-8 0c0-2 1-3 2-4 .3 1.6 1 2.2 2 2.2-.5-1.8-.4-3.2 0-4.7z" fill="#ffd166"/></svg>
+    <b>EMBER</b><span>Bushfire Risk Intelligence</span>
+  </div>
+  <div class="tb-cell opt"><span class="k">Sector</span><span class="v">HUME RANGES · SYNTHETIC</span></div>
+  <div class="tb-cell"><span class="k">Fire danger (McArthur)</span><span class="v"><span class="band-pill" id="tbBand">—</span></span></div>
+  <div class="tb-cell opt2"><span class="k">FFDI</span><span class="v" id="tbFfdi">—</span></div>
+  <div class="tb-spacer"></div>
+  <div class="tb-cell opt"><span class="k">Model</span><span class="v"><span class="led"></span>PY-VALIDATED</span></div>
+  <div class="tb-cell"><span class="k">Status</span><span class="v" id="tbStatus"><span class="led"></span>STANDBY</span></div>
+  <div class="tb-cell opt2"><span class="k">Local</span><span class="v" id="tbClock">--:--:--</span></div>
+</header>
+
+<main class="console">
+  <!-- ======================= FIRE WEATHER ======================= -->
+  <section class="panel a-wx" aria-labelledby="h-wx">
+    <div class="ph"><span class="idx">01</span><span id="h-wx">Fire weather</span><span class="r">MK5 · NOBLE 1980</span></div>
+    <div class="pb">
+      <div class="gauge-wrap">
+        <svg class="gauge" id="gauge" viewBox="0 0 220 172" role="img" aria-label="Forest Fire Danger Index gauge">
+          <g id="gArcs"></g>
+          <g id="gTicks"></g>
+          <path id="gPtr" d="M0 0" fill="#fff"/>
+          <text class="unit" x="110" y="80" text-anchor="middle">FFDI</text>
+          <text class="val" id="gVal" x="110" y="116" text-anchor="middle" data-testid="ffdi-value">0</text>
+          <text class="band" id="gBand" x="110" y="138" text-anchor="middle" data-testid="ffdi-band">—</text>
+          <text class="unit" x="110" y="166" text-anchor="middle">LEGACY MCARTHUR FDI CATEGORY</text>
+        </svg>
+      </div>
+      <div class="readouts">
+        <div><div class="k">Head ROS · forest</div><div class="v" id="roForest">—</div></div>
+        <div><div class="k">Head ROS · grass</div><div class="v" id="roGrass">—</div></div>
+        <div><div class="k">Head : back</div><div class="v" id="roHB">—</div></div>
+        <div><div class="k">Length : breadth</div><div class="v" id="roLB">—</div></div>
+      </div>
+
+      <div class="sub">Scenario presets</div>
+      <div class="presets" id="presets"></div>
+
+      <div class="sub">Conditions</div>
+      <div class="slider"><div class="row"><label for="sT">Air temperature</label><output id="oT"></output></div><input type="range" id="sT" min="10" max="50" step="0.5" data-testid="slider-temp"></div>
+      <div class="slider"><div class="row"><label for="sRH">Relative humidity</label><output id="oRH"></output></div><input type="range" id="sRH" min="2" max="100" step="1" data-testid="slider-rh"></div>
+      <div class="slider"><div class="row"><label for="sV">Wind speed (10 m)</label><output id="oV"></output></div><input type="range" id="sV" min="0" max="100" step="1" data-testid="slider-wind"></div>
+      <div class="slider"><div class="row"><label for="sDF">Drought factor</label><output id="oDF"></output></div><input type="range" id="sDF" min="0" max="10" step="0.5" data-testid="slider-df"></div>
+
+      <div class="sub">Wind direction</div>
+      <div class="wind-row">
+        <svg class="compass" id="compass" viewBox="0 0 160 160" tabindex="0" role="slider" aria-label="Wind direction (blowing from), drag or use arrow keys" aria-valuemin="0" aria-valuemax="359" data-testid="compass">
+          <circle cx="80" cy="80" r="66" fill="#0a0e12" stroke="#26323d"/>
+          <circle cx="80" cy="80" r="44" fill="none" stroke="#1b242d" stroke-dasharray="2 3"/>
+          <g id="cTicks"></g>
+          <g id="cArrow"></g>
+          <circle id="cHandle" r="7" fill="#ffb000" stroke="#000" stroke-width="1.5"/>
+        </svg>
+        <div class="wind-meta">
+          <div class="k">From</div><div class="v" id="wFrom">—</div>
+          <div class="k">Fire pushed toward</div><div class="v" id="wTo">—</div>
+          <button class="btn hot" id="btnChange" title="Swing wind to a gusty south-westerly, as on Black Saturday evening">SW CHANGE ⟲</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= MAP ======================= -->
+  <section class="panel a-map" aria-labelledby="h-map">
+    <div class="ph"><span class="idx">02</span><span id="h-map">Operational picture</span><span class="r">18.0 × 11.2 KM · 100 M CELLS · 16-NEIGHBOUR CA</span></div>
+    <div class="map-bar">
+      <button class="btn" id="btnPlay" data-testid="btn-play">❚❚ PAUSE</button>
+      <div class="grp" id="speeds"></div>
+      <span class="sep"></span>
+      <button class="btn" id="btnDemo" data-testid="btn-demo">⚑ DEMO IGNITION</button>
+      <button class="btn" id="btnReset" data-testid="btn-reset">RESET</button>
+      <span class="sep"></span>
+      <button class="btn on" id="btnIso" aria-pressed="true">ISOCHRONES</button>
+      <button class="btn on" id="btnSpot" aria-pressed="true">SPOTTING</button>
+      <div class="clock"><div><span>SIM </span><b id="simClock">13:00</b></div><div><span>ELAPSED </span><b id="simElapsed" data-testid="sim-elapsed">T+00:00</b></div></div>
+    </div>
+    <div class="map-wrap" id="mapWrap">
+      <canvas id="map" tabindex="0" aria-label="Fire map. Click to ignite." data-testid="map"></canvas>
+      <div class="hover" id="hover" hidden></div>
+      <div class="hint" id="hint">Click the map to ignite · or ⚑ demo ignition</div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <!-- ======================= MODEL TRACE ======================= -->
+  <section class="panel a-model" aria-labelledby="h-model">
+    <div class="ph"><span class="idx">06</span><span id="h-model">Model trace</span><span class="r">LIVE SUBSTITUTION</span></div>
+    <div class="pb trace" id="trace"></div>
+  </section>
+
+  <!-- ======================= IMPACT ======================= -->
+  <section class="panel a-impact" aria-labelledby="h-imp">
+    <div class="ph"><span class="idx">03</span><span id="h-imp">Impact assessment</span><span class="r" id="impState">NO ACTIVE FIRE</span></div>
+    <div class="kpis">
+      <div class="kpi" id="kArea"><div class="k">Area burnt</div><div class="v" data-testid="kpi-area">0 <small>ha</small></div><div class="s">0 cells alight</div></div>
+      <div class="kpi" id="kTowns"><div class="k">Townships exposed</div><div class="v" data-testid="kpi-towns">0 <small>/ 6</small></div><div class="s">within 2 km of fire</div></div>
+      <div class="kpi" id="kPop"><div class="k">Population at risk</div><div class="v" data-testid="kpi-pop">0</div><div class="s">—</div></div>
+      <div class="kpi" id="kTime"><div class="k">Time to first asset</div><div class="v" data-testid="kpi-time">—</div><div class="s">awaiting ignition</div></div>
+    </div>
+  </section>
+
+  <!-- ======================= RANKING ======================= -->
+  <section class="panel a-rank" aria-labelledby="h-rank">
+    <div class="ph"><span class="idx">04</span><span id="h-rank">Locality risk ranking</span><span class="r">AUTO-SORT</span></div>
+    <table>
+      <thead><tr><th>#</th><th>Locality</th><th class="num">Pop</th><th class="col-risk">Risk</th><th class="num">ETA</th><th>Status</th></tr></thead>
+      <tbody id="rankBody" data-testid="rank-body"></tbody>
+    </table>
+  </section>
+
+  <!-- ======================= FEED ======================= -->
+  <section class="panel a-feed" aria-labelledby="h-feed">
+    <div class="ph"><span class="idx">05</span><span id="h-feed">Operations feed</span><span class="r" id="feedCount">0 ENTRIES</span></div>
+    <div class="feed" id="feed" role="log" aria-live="polite" data-testid="feed"></div>
+  </section>
+</main>
+
+<footer>
+  <span>EMBER is an educational demonstration on synthetic terrain. Not for operational use. Always follow advice from your state fire agency.</span>
+  <span>McArthur (1967) · Noble, Bary &amp; Gill (1980) · Anderson (1983) · <a href="https://github.com/nrjalela/ember">source</a></span>
+</footer>
+
+<script>
+"use strict";
+/* =====================================================================
+   1. FIRE BEHAVIOUR MODEL
+   Ported line-for-line from validation/ember_model.py (the validated
+   reference). tests/parity.spec.js checks this port against fixtures
+   exported from the Python model.
+   ===================================================================== */
+const Model = (() => {
+  // McArthur Mk5 FFDI, algebraic form of Noble et al. (1980)
+  function ffdi(temp, rh, wind, df) {
+    df = Math.min(Math.max(df, 0), 10);
+    if (df <= 0) return 0;
+    return 2.0 * Math.exp(-0.45 + 0.987 * Math.log(df) - 0.0345 * rh + 0.0338 * temp + 0.0234 * wind);
+  }
+
+  // Legacy McArthur FDI categories (in use until the AFDRS, 2022)
+  const BANDS = [
+    { lo: 0,   name: "LOW-MODERATE", color: "#3fa34d" },
+    { lo: 12,  name: "HIGH",         color: "#2f8fe0" },
+    { lo: 25,  name: "VERY HIGH",    color: "#f2c200" },
+    { lo: 50,  name: "SEVERE",       color: "#ff8a00" },
+    { lo: 75,  name: "EXTREME",      color: "#e5261f" },
+    { lo: 100, name: "CATASTROPHIC", color: "#b3001b" },
+  ];
+  function bandIndex(v) { let k = 0; for (let i = 0; i < BANDS.length; i++) if (v >= BANDS[i].lo) k = i; return k; }
+  function dangerBand(v) { return BANDS[bandIndex(v)].name; }
+
+  // ROS = 0.0012 * FFDI * W * exp(0.069 * slope), km/h
+  const SLOPE_COEFF = 0.069, SLOPE_LIMIT_DEG = 20.0;
+  function rateOfSpread(f, w, slopeDeg = 0) {
+    if (w <= 0 || f <= 0) return 0;
+    const s = Math.min(Math.max(slopeDeg, -SLOPE_LIMIT_DEG), SLOPE_LIMIT_DEG);
+    return 0.0012 * f * w * Math.exp(SLOPE_COEFF * s);
+  }
+
+  // Directional spread: ellipse with ignition at the rear focus (Anderson 1983)
+  const REF_WIND_KMH = 30.0, REF_HEAD_BACK_RATIO = 4.0;
+  const E_REF = (REF_HEAD_BACK_RATIO - 1.0) / (REF_HEAD_BACK_RATIO + 1.0);
+  const K_WIND = -Math.log(1.0 - E_REF) / REF_WIND_KMH;
+  function eccentricity(v) { return 1.0 - Math.exp(-K_WIND * Math.max(v, 0)); }
+  function directionFactor(v, cosTheta) { const e = eccentricity(v); return (1.0 - e) / (1.0 - e * cosTheta); }
+  function spreadVector(fromDeg) { const to = (fromDeg + 180.0) * (Math.PI / 180); return [Math.sin(to), -Math.cos(to)]; }
+
+  // 16-neighbour minimum-travel-time cellular automaton
+  const NEIGHBOURS = [
+    [1, 0], [-1, 0], [0, 1], [0, -1],
+    [1, 1], [1, -1], [-1, 1], [-1, -1],
+    [2, 1], [2, -1], [-2, 1], [-2, -1],
+    [1, 2], [1, -2], [-1, 2], [-1, -2],
+  ];
+  const NB_DIST = NEIGHBOURS.map(([dx, dy]) => Math.hypot(dx, dy));
+
+  class MinHeap {
+    constructor(cap = 4096) { this.k = new Float64Array(cap); this.v = new Int32Array(cap); this.n = 0; }
+    push(key, val) {
+      if (this.n === this.k.length) {
+        const k = new Float64Array(this.n * 2), v = new Int32Array(this.n * 2);
+        k.set(this.k); v.set(this.v); this.k = k; this.v = v;
+      }
+      let i = this.n++;
+      while (i > 0) { const p = (i - 1) >> 1; if (this.k[p] <= key) break; this.k[i] = this.k[p]; this.v[i] = this.v[p]; i = p; }
+      this.k[i] = key; this.v[i] = val;
+    }
+    pop() { // returns index; key in this.topKey
+      this.topKey = this.k[0]; const top = this.v[0];
+      const n = --this.n, lk = this.k[n], lv = this.v[n];
+      let i = 0;
+      while (true) {
+        let c = 2 * i + 1; if (c >= n) break;
+        if (c + 1 < n && this.k[c + 1] < this.k[c]) c++;
+        if (this.k[c] >= lk) break;
+        this.k[i] = this.k[c]; this.v[i] = this.v[c]; i = c;
+      }
+      if (n > 0) { this.k[i] = lk; this.v[i] = lv; }
+      return top;
+    }
+  }
+
+  function knightPassable(land, x, y, dx, dy) {
+    const { nx, fuel } = land;
+    if (Math.abs(dx) === 2) { const sx = x + dx / 2; return fuel[y * nx + sx] > 0 && fuel[(y + dy) * nx + sx] > 0; }
+    const sy = y + dy / 2; return fuel[sy * nx + x] > 0 && fuel[sy * nx + x + dx] > 0;
+  }
+
+  /** Ignition time (hours) of each cell; Infinity if never reached.
+   *  sources: [[cellIndex, ignitionTime], ...]; offers are never earlier than tNow. */
+  function arrivalTimes(land, wx, sources, tNow = 0) {
+    const { nx, ny, cellM, fuel, elev } = land;
+    const n = nx * ny;
+    const t = new Float64Array(n).fill(Infinity);
+    const fixed = new Uint8Array(n);
+    const heap = new MinHeap();
+    for (const [i, ts] of sources) {
+      if (fuel[i] > 0 && ts < t[i]) { t[i] = ts; fixed[i] = 1; heap.push(ts, i); }
+    }
+    const index = ffdi(wx.temp, wx.rh, wx.wind, wx.df);
+    const [ux, uy] = spreadVector(wx.windFrom);
+    const cellKm = cellM / 1000.0;
+    const RAD2DEG = 180 / Math.PI;
+    while (heap.n > 0) {
+      const i = heap.pop(), ti = heap.topKey;
+      if (ti > t[i]) continue;
+      const x = i % nx, y = (i / nx) | 0;
+      for (let k = 0; k < 16; k++) {
+        const dx = NEIGHBOURS[k][0], dy = NEIGHBOURS[k][1];
+        const x2 = x + dx, y2 = y + dy;
+        if (x2 < 0 || y2 < 0 || x2 >= nx || y2 >= ny) continue;
+        const j = y2 * nx + x2;
+        if (fixed[j] || fuel[j] <= 0) continue;
+        if (k >= 8 && !knightPassable(land, x, y, dx, dy)) continue;
+        const dist = NB_DIST[k];
+        const slope = Math.atan((elev[j] - elev[i]) / (dist * cellM)) * RAD2DEG;
+        const cosTheta = (dx * ux + dy * uy) / dist;
+        const r = rateOfSpread(index, fuel[j], slope) * directionFactor(wx.wind, cosTheta);
+        if (r <= 0) continue;
+        const cand = Math.max(tNow, ti + dist * cellKm / r);
+        if (cand < t[j]) { t[j] = cand; heap.push(cand, j); }
+      }
+    }
+    return t;
+  }
+
+  return { ffdi, BANDS, bandIndex, dangerBand, rateOfSpread, eccentricity, directionFactor, spreadVector, arrivalTimes, K_WIND };
+})();
+
+/* =====================================================================
+   2. PROCEDURAL LANDSCAPE
+   ===================================================================== */
+const NX = 180, NY = 112, CELL_M = 100, N = NX * NY;
+const FUELS = [
+  { id: "water",  name: "Water",                     w: 0,  rgb: [16, 50, 64] },
+  { id: "grass",  name: "Grassland (cured)",         w: 6,  rgb: [96, 90, 52] },
+  { id: "wood",   name: "Open woodland",             w: 12, rgb: [66, 78, 46] },
+  { id: "forest", name: "Dry sclerophyll forest",    w: 20, rgb: [38, 62, 40] },
+  { id: "heavy",  name: "Ridge forest (heavy fuel)", w: 25, rgb: [24, 44, 30] },
+  { id: "urban",  name: "Township / interface",      w: 3,  rgb: [78, 80, 84] },
+];
+const TOWNS = [
+  { name: "Ashford Ridge",  x: 34,  y: 27, pop: 2140 },
+  { name: "Bellbird Gully", x: 134, y: 20, pop: 860 },
+  { name: "Wattle Creek",   x: 92,  y: 55, pop: 3480 },
+  { name: "Coolabah Flat",  x: 45,  y: 88, pop: 5210 },
+  { name: "Stringybark",    x: 152, y: 76, pop: 1320 },
+  { name: "Yarran Vale",    x: 110, y: 97, pop: 2760 },
+];
+const RIVERS = [
+  { name: "Merri River", half: 1.7, pts: [[182, 44], [158, 46], [138, 60], [118, 70], [96, 72], [76, 66], [58, 70], [36, 76], [14, 70], [-2, 74]] },
+  { name: "Kurrajong Ck", half: 1.2, pts: [[64, -2], [70, 14], [66, 30], [74, 46], [84, 58], [96, 71]] },
+];
+const LAKE = { x: 146, y: 99, r: 6.5 };
+const SEED = 1983;
+
+function hash2(x, y, s) {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 982451653)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function vnoise(x, y, s) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi, s), b = hash2(xi + 1, yi, s), c = hash2(xi, yi + 1, s), d = hash2(xi + 1, yi + 1, s);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function fbm(x, y, s, oct) {
+  let amp = 0.5, f = 1, sum = 0, norm = 0;
+  for (let i = 0; i < oct; i++) { sum += amp * vnoise(x * f, y * f, s + i * 31); norm += amp; amp *= 0.5; f *= 2.03; }
+  return sum / norm;
+}
+function ridged(x, y, s, oct) {
+  let amp = 0.5, f = 1, sum = 0, norm = 0;
+  for (let i = 0; i < oct; i++) { const r = 1 - Math.abs(2 * vnoise(x * f, y * f, s + i * 17) - 1); sum += amp * r * r; norm += amp; amp *= 0.5; f *= 2.1; }
+  return sum / norm;
+}
+function catmull(pts, step) {
+  const out = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(i - 1, 0)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(i + 2, pts.length - 1)];
+    const len = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]), m = Math.max(2, Math.ceil(len / step));
+    for (let k = 0; k < m; k++) {
+      const t = k / m, t2 = t * t, t3 = t2 * t;
+      const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
+function buildLandscape() {
+  const elev = new Float64Array(N), fuel = new Float64Array(N), cls = new Uint8Array(N);
+  const riverD = new Float32Array(N).fill(1e9), riverHalf = new Float32Array(N);
+  const townD = new Float32Array(N).fill(1e9), townOf = new Int8Array(N).fill(-1);
+
+  // River distance field (meandered centre-lines)
+  for (const r of RIVERS) {
+    const pts = catmull(r.pts, 0.5).map(([x, y], k) => [x + (vnoise(k * 0.03, 3.1, SEED) - 0.5) * 3, y + (vnoise(k * 0.03, 7.7, SEED) - 0.5) * 3]);
+    r.path = pts;
+    for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
+      const i = y * NX + x;
+      let best = riverD[i];
+      for (let k = 0; k < pts.length; k += 1) {
+        const dx = pts[k][0] - x, dy = pts[k][1] - y;
+        if (Math.abs(dx) > best || Math.abs(dy) > best) continue;
+        const d = Math.hypot(dx, dy);
+        if (d < best) { best = d; riverHalf[i] = r.half; }
+      }
+      riverD[i] = best;
+    }
+  }
+  for (const t of TOWNS) t.r = 2.2 + Math.sqrt(t.pop) / 26;
+
+  let lo = Infinity, hi = -Infinity;
+  const raw = new Float64Array(N);
+  for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
+    const i = y * NX + x;
+    const tilt = 0.55 * (1 - y / NY) + 0.25 * (x / NX);
+    const base = fbm(x / 48, y / 48, SEED, 4);
+    const ridge = ridged(x / 26 + 11.3, y / 26 - 4.7, SEED + 101, 4);
+    raw[i] = 0.35 * base + 0.55 * ridge * (0.45 + tilt) + 0.35 * tilt;
+    lo = Math.min(lo, raw[i]); hi = Math.max(hi, raw[i]);
+  }
+  for (let y = 0; y < NY; y++) for (let x = 0; x < NX; x++) {
+    const i = y * NX + x;
+    let e = (raw[i] - lo) / (hi - lo);
+    // River valleys
+    e -= 0.28 * Math.exp(-((riverD[i] / 7) ** 2)) * e + 0.04 * Math.exp(-((riverD[i] / 3) ** 2));
+    // Townships sit on flattened valley floors
+    for (let k = 0; k < TOWNS.length; k++) {
+      const t = TOWNS[k], d = Math.hypot(x - t.x, y - t.y);
+      const g = Math.exp(-((d / (t.r * 2.6)) ** 2));
+      e = e * (1 - 0.75 * g) + 0.16 * 0.75 * g;
+      if (d - t.r < townD[i]) { townD[i] = d - t.r; townOf[i] = k; }
+    }
+    const lk = Math.hypot(x - LAKE.x, y - LAKE.y);
+    e -= 0.12 * Math.exp(-((lk / (LAKE.r * 1.8)) ** 2));
+    e = Math.max(0, e);
+    elev[i] = 140 + 380 * e;
+
+    let c;
+    if (riverD[i] < riverHalf[i] || lk < LAKE.r + (vnoise(x / 3, y / 3, SEED + 5) - 0.5) * 2) c = 0;
+    else if (townD[i] < 0) c = 5;
+    else {
+      const s = e + 0.2 * (fbm(x / 11, y / 11, SEED + 7, 3) - 0.5) - 0.14 * Math.exp(-((riverD[i] / 5) ** 2)) - 0.1 * Math.exp(-((townD[i] / 6) ** 2));
+      c = s < 0.27 ? 1 : s < 0.38 ? 2 : s < 0.6 ? 3 : 4;
+    }
+    cls[i] = c;
+    fuel[i] = FUELS[c].w * (0.85 + 0.3 * fbm(x / 4, y / 4, SEED + 33, 2));
+  }
+  return { nx: NX, ny: NY, cellM: CELL_M, fuel, elev, cls, riverD, townOf };
+}
+
+/* =====================================================================
+   3. APP STATE
+   ===================================================================== */
+const PRESETS = [
+  { id: "mild",    name: "Mild Spring",        note: "calm, damp",       temp: 22, rh: 45, wind: 15, df: 4,  from: 200 },
+  { id: "summer",  name: "Summer Afternoon",   note: "typical Jan day",  temp: 34, rh: 22, wind: 25, df: 8,  from: 0 },
+  { id: "north",   name: "Hot Northerly",      note: "pre-frontal",      temp: 40, rh: 10, wind: 45, df: 10, from: 340 },
+  { id: "ash",     name: "Ash Wednesday '83",  note: "16 Feb 1983",      temp: 41, rh: 8,  wind: 50, df: 10, from: 320 },
+  { id: "bs",      name: "Black Saturday '09", note: "7 Feb 2009 · FFDI ≈ 172", temp: 46, rh: 6, wind: 55, df: 10, from: 315, wide: true },
+];
+const SPEEDS = [{ k: 0.5, l: "½×" }, { k: 1, l: "1×" }, { k: 4, l: "4×" }, { k: 16, l: "16×" }];
+const SIM_H_PER_SEC = 10 / 60;   // at 1×: 10 simulated minutes per real second
+const START_HOUR = 13;
+const THREAT_KM = 2.0;
+
+const land = buildLandscape();
+const S = {
+  wx: { temp: 46, rh: 6, wind: 55, df: 10, windFrom: 315 },
+  preset: "bs",
+  t: 0, running: true, speed: 1, started: false, ended: false,
+  T: new Float64Array(N).fill(Infinity),
+  pending: [],                 // [i, t] ignitions added since last recompute
+  ignitions: [],               // {x, y, t, spot}
+  townState: TOWNS.map(() => ({ status: "safe", eta: Infinity, dist: Infinity, risk: 0 })),
+  firstImpact: null,
+  iso: true, spot: true,
+  embers: [],
+  burningList: [],
+  lastBand: -1,
+  milestones: new Set(),
+};
+
+// Precompute neighbourhoods around each town for exposure checks
+const townCells = TOWNS.map((t) => {
+  const foot = [], ring = [];
+  const R = Math.ceil(t.r + THREAT_KM * 10 + 1);
+  for (let y = Math.max(0, t.y - R); y <= Math.min(NY - 1, t.y + R); y++)
+    for (let x = Math.max(0, t.x - R); x <= Math.min(NX - 1, t.x + R); x++) {
+      const d = Math.hypot(x - t.x, y - t.y) - t.r, i = y * NX + x;
+      if (d <= 0) foot.push(i);
+      if (d <= THREAT_KM * 10) ring.push([i, Math.max(0, d) * CELL_M / 1000]);
+    }
+  return { foot, ring };
+});
+
+function currentFFDI() { return Model.ffdi(S.wx.temp, S.wx.rh, S.wx.wind, S.wx.df); }
+
+function recompute() {
+  const sources = [];
+  for (let i = 0; i < N; i++) if (S.T[i] <= S.t) sources.push([i, S.T[i]]);
+  for (const p of S.pending) sources.push(p);
+  S.pending = [];
+  S.T = Model.arrivalTimes(land, S.wx, sources, S.t);
+}
+
+/* =====================================================================
+   4. FORMATTING + FEED
+   ===================================================================== */
+const $ = (id) => document.getElementById(id);
+const fmtInt = (n) => Math.round(n).toLocaleString("en-AU");
+const pad = (n) => String(n).padStart(2, "0");
+function hhmm(h) { if (!isFinite(h)) return "—"; const m = Math.round(h * 60); return pad(Math.floor(m / 60)) + ":" + pad(m % 60); }
+function clockAt(h) { const m = Math.floor((START_HOUR + h) * 60); return pad(Math.floor(m / 60) % 24) + ":" + pad(m % 60); }
+function compass16(deg) { return ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(((deg % 360) + 360) % 360 / 22.5) % 16]; }
+function gridRef(i) { const x = i % NX, y = (i / NX) | 0; return "GR " + pad3(x) + "-" + pad3(NY - 1 - y); }
+function pad3(n) { return String(n).padStart(3, "0"); }
+
+const feedEl = $("feed");
+let feedN = 0;
+function log(tag, msg) {
+  const e = document.createElement("div");
+  e.className = "e new";
+  e.innerHTML = `<span class="ts">${clockAt(S.t)}:${pad(Math.floor(((S.t * 3600) % 60)))}</span><span class="tag ${tag}">${tag}</span><span></span>`;
+  e.lastChild.textContent = msg;
+  feedEl.prepend(e);
+  while (feedEl.children.length > 120) feedEl.lastChild.remove();
+  $("feedCount").textContent = ++feedN + " ENTRIES";
+}
+
+/* =====================================================================
+   5. WEATHER PANEL
+   ===================================================================== */
+const GA = { cx: 110, cy: 104, r: 84, sweep: 240, edges: [0, 12, 25, 50, 75, 100, 200] };
+function gPt(a, r) { const rad = a * Math.PI / 180; return [GA.cx + r * Math.sin(rad), GA.cy - r * Math.cos(rad)]; }
+function gAngle(v) {
+  const e = GA.edges, seg = GA.sweep / (e.length - 1);
+  v = Math.max(0, Math.min(v, e[e.length - 1]));
+  let k = 0; while (k < e.length - 2 && v >= e[k + 1]) k++;
+  return -GA.sweep / 2 + seg * (k + (v - e[k]) / (e[k + 1] - e[k]));
+}
+function buildGauge() {
+  const seg = GA.sweep / 6; let arcs = "", ticks = "";
+  Model.BANDS.forEach((b, k) => {
+    const a0 = -GA.sweep / 2 + seg * k + 0.8, a1 = a0 + seg - 1.6;
+    const [x0, y0] = gPt(a0, GA.r), [x1, y1] = gPt(a1, GA.r);
+    arcs += `<path id="gArc${k}" d="M${x0.toFixed(2)} ${y0.toFixed(2)} A${GA.r} ${GA.r} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)}" stroke="${b.color}" stroke-width="11" fill="none"/>`;
+  });
+  GA.edges.forEach((v, k) => {
+    const a = -GA.sweep / 2 + seg * k, [x0, y0] = gPt(a, GA.r - 9), [x1, y1] = gPt(a, GA.r + 9), [lx, ly] = gPt(a, GA.r + 17);
+    ticks += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="#4a5863"/><text class="lbl" x="${lx}" y="${ly + 3}" text-anchor="middle">${v}${k === 6 ? "+" : ""}</text>`;
+  });
+  for (let a = -GA.sweep / 2; a <= GA.sweep / 2; a += seg / 5) {
+    const [x0, y0] = gPt(a, GA.r - 7.5), [x1, y1] = gPt(a, GA.r - 5.5);
+    ticks += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="#26323d"/>`;
+  }
+  $("gArcs").innerHTML = arcs; $("gTicks").innerHTML = ticks;
+}
+
+function buildCompass() {
+  let s = "";
+  for (let a = 0; a < 360; a += 10) {
+    const maj = a % 30 === 0, rad = a * Math.PI / 180, r0 = maj ? 57 : 61;
+    s += `<line class="tick${maj ? " maj" : ""}" x1="${80 + r0 * Math.sin(rad)}" y1="${80 - r0 * Math.cos(rad)}" x2="${80 + 65 * Math.sin(rad)}" y2="${80 - 65 * Math.cos(rad)}"/>`;
+  }
+  [["N", 0], ["E", 90], ["S", 180], ["W", 270]].forEach(([l, a]) => {
+    const rad = a * Math.PI / 180;
+    s += `<text class="card${l === "N" ? " n" : ""}" x="${80 + 47 * Math.sin(rad)}" y="${80 - 47 * Math.cos(rad) + 4}" text-anchor="middle">${l}</text>`;
+  });
+  $("cTicks").innerHTML = s;
+}
+
+function drawCompass() {
+  const a = S.wx.windFrom * Math.PI / 180, r = 66;
+  const hx = 80 + r * Math.sin(a), hy = 80 - r * Math.cos(a);
+  $("cHandle").setAttribute("cx", hx); $("cHandle").setAttribute("cy", hy);
+  const tx = 80 - 34 * Math.sin(a), ty = 80 + 34 * Math.cos(a), fx = 80 + 34 * Math.sin(a), fy = 80 - 34 * Math.cos(a);
+  const ang = S.wx.windFrom + 180;
+  $("cArrow").innerHTML =
+    `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="#ff6a13" stroke-width="2.5"/>` +
+    `<path d="M0 -9 L6 4 L0 1 L-6 4Z" fill="#ff6a13" transform="translate(${tx} ${ty}) rotate(${ang})"/>` +
+    `<circle cx="80" cy="80" r="15" fill="#06080a" stroke="#26323d"/>` +
+    `<text x="80" y="83" text-anchor="middle" font-size="10" fill="#eef3f6" font-family="IBM Plex Mono">${Math.round(S.wx.wind)}</text>`;
+  const c = $("compass");
+  c.setAttribute("aria-valuenow", Math.round(S.wx.windFrom));
+  c.setAttribute("aria-valuetext", `${Math.round(S.wx.windFrom)} degrees, ${compass16(S.wx.windFrom)}`);
+  $("wFrom").textContent = pad3(Math.round(S.wx.windFrom)) + "° " + compass16(S.wx.windFrom);
+  $("wTo").textContent = pad3(Math.round((S.wx.windFrom + 180) % 360)) + "° " + compass16(S.wx.windFrom + 180);
+}
+
+const sliders = { temp: ["sT", "oT", (v) => v.toFixed(1) + " °C"], rh: ["sRH", "oRH", (v) => v.toFixed(0) + " %"], wind: ["sV", "oV", (v) => v.toFixed(0) + " km/h"], df: ["sDF", "oDF", (v) => v.toFixed(1)] };
+function syncSliders() {
+  for (const [k, [sid, oid, f]] of Object.entries(sliders)) {
+    const el = $(sid); el.value = S.wx[k];
+    el.style.setProperty("--p", ((S.wx[k] - el.min) / (el.max - el.min) * 100) + "%");
+    $(oid).textContent = f(S.wx[k]);
+  }
+}
+
+function updateWeatherUI() {
+  const F = currentFFDI(), bi = Model.bandIndex(F), band = Model.BANDS[bi];
+  $("gVal").textContent = F < 10 ? F.toFixed(1) : Math.round(F);
+  $("gBand").textContent = band.name; $("gBand").setAttribute("fill", band.color === "#b3001b" ? "#ff4d5e" : band.color);
+  const a = gAngle(F), [px, py] = gPt(a, GA.r - 14);
+  $("gPtr").setAttribute("d", `M0 -7 L5 5 L-5 5Z`);
+  $("gPtr").setAttribute("transform", `translate(${px} ${py}) rotate(${a})`);
+  Model.BANDS.forEach((_, k) => $("gArc" + k).setAttribute("opacity", k === bi ? 1 : k < bi ? 0.55 : 0.18));
+  const pill = $("tbBand"); pill.textContent = band.name; pill.style.background = band.color; pill.style.color = bi >= 4 ? "#fff" : "#000";
+  $("tbFfdi").textContent = F.toFixed(1);
+  const rf = Model.rateOfSpread(F, 20), rg = Model.rateOfSpread(F, 6), e = Model.eccentricity(S.wx.wind);
+  $("roForest").innerHTML = rf.toFixed(2) + " <small>km/h</small>";
+  $("roGrass").innerHTML = rg.toFixed(2) + " <small>km/h</small>";
+  $("roHB").innerHTML = ((1 + e) / (1 - e)).toFixed(1) + " <small>: 1</small>";
+  $("roLB").innerHTML = (1 / Math.sqrt(1 - e * e)).toFixed(2) + " <small>: 1</small>";
+  syncSliders(); drawCompass(); updateTrace(F);
+  if (S.lastBand !== -1 && bi !== S.lastBand) log("FDI", `Fire danger ${bi > S.lastBand ? "escalated" : "eased"} to ${band.name} (FFDI ${F.toFixed(0)})`);
+  S.lastBand = bi;
+  document.querySelectorAll("#presets .btn").forEach((b) => b.classList.toggle("on", b.dataset.id === S.preset));
+}
+
+function updateTrace(F) {
+  const w = S.wx, e = Model.eccentricity(w.wind), r = Model.rateOfSpread(F, 20);
+  const n = (v, d = 2) => `<span class="n">${typeof v === "number" ? v.toFixed(d) : v}</span>`;
+  $("trace").innerHTML =
+    `<div class="ln"><span class="c">// McArthur Mk5 FFDI — Noble, Bary &amp; Gill (1980)</span></div>` +
+    `<div class="ln">FFDI = 2·exp(−0.45 + 0.987·ln(${n(w.df, 1)}) − 0.0345·${n(w.rh, 0)} + 0.0338·${n(w.temp, 1)} + 0.0234·${n(w.wind, 0)}) = <span class="res">${F.toFixed(1)}</span></div>` +
+    `<div class="ln"><span class="c">// Head-fire rate of spread, dry sclerophyll W = 20 t/ha, flat</span></div>` +
+    `<div class="ln">ROS = 0.0012 · ${n(F, 1)} · ${n(20, 0)} · e<sup>0.069·θ</sup> = <span class="res">${r.toFixed(2)} km/h</span> <span class="c">(θ clamped ±20°)</span></div>` +
+    `<div class="ln"><span class="c">// Directional spread: ellipse, ignition at rear focus (Anderson 1983)</span></div>` +
+    `<div class="ln">e = 1 − exp(−${n(Model.K_WIND, 4)}·${n(w.wind, 0)}) = ${n(e, 3)} → R(φ) = ROS·(1−e)/(1−e·cosφ) → head:back <span class="res">${((1 + e) / (1 - e)).toFixed(1)}:1</span></div>` +
+    `<div class="ln"><span class="c">// CA: t(j) = min over burning i of t(i) + d(i,j)/R(φ,θ,W<sub>j</sub>) · 16-neighbour stencil · 100 m cells</span></div>` +
+    `<div class="ref">Every formula above is validated in Python (validation/, 28 pytest checks: FFDI 46 °C/6 %/55 km/h/DF 10 → 172.5; CA downwind:upwind 4.2:1 at 30 km/h) and ported line-for-line; Playwright parity tests confirm the JS matches to 1e-9. Spotting is an unvalidated heuristic layer.</div>`;
+}
+
+function setWeather(patch, source) {
+  Object.assign(S.wx, patch);
+  if (source !== "preset") S.preset = null;
+  updateWeatherUI();
+  if (S.started && !S.ended) recompute();
+  updateTownRisk();
+}
+
+/* =====================================================================
+   6. TOWNS: RISK, EXPOSURE, ETA
+   ===================================================================== */
+function updateTownRisk() {
+  const F = currentFFDI(), [ux, uy] = Model.spreadVector(S.wx.windFrom);
+  const ffdiK = Math.min(1, F / 100) ** 0.6;
+  TOWNS.forEach((t, k) => {
+    let near = 0, nn = 0, up = 0, un = 0;
+    for (let y = Math.max(0, t.y - 50); y <= Math.min(NY - 1, t.y + 50); y++)
+      for (let x = Math.max(0, t.x - 50); x <= Math.min(NX - 1, t.x + 50); x++) {
+        const dx = x - t.x, dy = y - t.y, d = Math.hypot(dx, dy);
+        if (d > 50 || d < t.r) continue;
+        const i = y * NX + x;
+        if (d <= 30) { near += land.fuel[i]; nn++; }
+        // upwind sector: cells from which fire would be pushed toward the town
+        if (d > 0 && -(dx * ux + dy * uy) / d > Math.cos(Math.PI / 5)) { up += land.fuel[i]; un++; }
+      }
+    const hazard = nn ? near / nn / 25 : 0, fetch = un ? up / un / 25 : 0;
+    S.townState[k].risk = Math.min(99, 100 * ffdiK * (0.35 * hazard + 0.65 * fetch) * 1.25);
+  });
+}
+
+const STATUS_RANK = { impact: 4, threat: 3, watch: 2, advice: 1, safe: 0 };
+function updateTowns() {
+  let exposed = 0, popRisk = 0, popSoon = 0;
+  TOWNS.forEach((t, k) => {
+    const st = S.townState[k], { foot, ring } = townCells[k];
+    let eta = Infinity, impacted = false, dist = Infinity;
+    for (const i of foot) { if (S.T[i] <= S.t) impacted = true; eta = Math.min(eta, S.T[i]); }
+    for (const [i, d] of ring) if (S.T[i] <= S.t && d < dist) dist = d;
+    st.eta = impacted ? 0 : eta - S.t; st.dist = dist;
+    const next = impacted ? "impact" : dist <= THREAT_KM ? "threat" : st.eta <= 3 ? "watch" : isFinite(st.eta) && S.started ? "advice" : "safe";
+    if (next !== st.status && STATUS_RANK[next] > STATUS_RANK[st.status]) {
+      if (next === "impact") {
+        log("IMPACT", `${t.name} (pop ${fmtInt(t.pop)}): fire front has reached the township`);
+        if (S.firstImpact === null) S.firstImpact = { t: S.t, name: t.name };
+      } else if (next === "threat") log("ALERT", `${t.name}: fire within ${dist.toFixed(1)} km — ember attack likely, ETA ${hhmm(st.eta)}`);
+      else if (next === "watch") log("ALERT", `${t.name}: WATCH AND ACT — projected impact in ${hhmm(st.eta)}`);
+    }
+    if (STATUS_RANK[next] >= STATUS_RANK[st.status] || !S.started) st.status = next;
+    if (st.status === "impact" || st.status === "threat") { exposed++; popRisk += t.pop; }
+    else if (st.eta <= 3) popSoon += t.pop;
+  });
+  return { exposed, popRisk, popSoon };
+}
+
+function renderRanking() {
+  const rows = TOWNS.map((t, k) => ({ t, k, s: S.townState[k] }));
+  const score = (r) => STATUS_RANK[r.s.status] * 1000 + (isFinite(r.s.eta) ? 500 - Math.min(r.s.eta, 48) * 10 : 0) + r.s.risk;
+  rows.sort((a, b) => score(b) - score(a));
+  $("rankBody").innerHTML = rows.map((r, n) => {
+    const label = { safe: "CLEAR", advice: "ADVICE", watch: "WATCH", threat: "EMERG", impact: "IMPACT" }[r.s.status];
+    return `<tr data-town="${r.t.name}"><td>${n + 1}</td><td>${r.t.name}</td><td class="num">${fmtInt(r.t.pop)}</td>` +
+      `<td class="col-risk"><span class="rbar"><b style="width:${r.s.risk.toFixed(0)}%;background:${r.s.risk > 66 ? "var(--red)" : r.s.risk > 33 ? "var(--amber)" : "var(--green)"}"></b></span>${r.s.risk.toFixed(0)}</td>` +
+      `<td class="num">${r.s.status === "impact" ? "NOW" : isFinite(r.s.eta) && r.s.eta < 48 ? hhmm(r.s.eta) : "—"}</td><td><span class="st ${r.s.status}">${label}</span></td></tr>`;
+  }).join("");
+}
+
+/* =====================================================================
+   7. MAP RENDERING
+   ===================================================================== */
+const canvas = $("map"), ctx = canvas.getContext("2d");
+const TS = 5; // terrain render pixels per cell
+const terrain = document.createElement("canvas"); terrain.width = NX * TS; terrain.height = NY * TS;
+const fireC = document.createElement("canvas"); fireC.width = NX; fireC.height = NY;
+const fireX = fireC.getContext("2d"); const fireImg = fireX.createImageData(NX, NY);
+const glowC = document.createElement("canvas"); glowC.width = NX / 4; glowC.height = NY / 4;
+const glowX = glowC.getContext("2d");
+const isoC = document.createElement("canvas"); isoC.width = NX; isoC.height = NY;
+const isoX = isoC.getContext("2d"); const isoImg = isoX.createImageData(NX, NY);
+
+function renderTerrain() {
+  const W = terrain.width, H = terrain.height, tx = terrain.getContext("2d"), img = tx.createImageData(W, H), d = img.data;
+  const col = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const c = FUELS[land.cls[i]].rgb, x = i % NX, y = (i / NX) | 0, tex = 0.88 + 0.24 * hash2(x, y, 77);
+    const k = land.cls[i] === 0 ? 1 : tex;
+    col[i * 3] = c[0] * k; col[i * 3 + 1] = c[1] * k; col[i * 3 + 2] = c[2] * k;
+  }
+  const bil = (arr, gx, gy, stride = 1, o = 0) => {
+    gx = Math.max(0, Math.min(NX - 1.001, gx)); gy = Math.max(0, Math.min(NY - 1.001, gy));
+    const x0 = gx | 0, y0 = gy | 0, fx = gx - x0, fy = gy - y0, i = y0 * NX + x0;
+    const a = arr[i * stride + o], b = arr[(i + 1) * stride + o], c = arr[(i + NX) * stride + o], e = arr[(i + NX + 1) * stride + o];
+    return a + (b - a) * fx + (c - a) * fy + (a - b - c + e) * fx * fy;
+  };
+  const band = new Int16Array(W * H);
+  const L = [-0.5, -0.6, 0.62]; const ln = Math.hypot(...L); L[0] /= ln; L[1] /= ln; L[2] /= ln;
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    const gx = (px + 0.5) / TS - 0.5, gy = (py + 0.5) / TS - 0.5;
+    const e = bil(land.elev, gx, gy);
+    const ex = (bil(land.elev, gx + 0.5, gy) - bil(land.elev, gx - 0.5, gy)) / CELL_M * 4.5;
+    const ey = (bil(land.elev, gx, gy + 0.5) - bil(land.elev, gx, gy - 0.5)) / CELL_M * 4.5;
+    const nl = Math.hypot(ex, ey, 1), shade = Math.max(0, (-ex * L[0] - ey * L[1] + L[2]) / nl);
+    const cx = Math.min(NX - 1, Math.max(0, Math.round(gx))), cy = Math.min(NY - 1, Math.max(0, Math.round(gy)));
+    const ci = cy * NX + cx, cls = land.cls[ci];
+    let r = bil(col, gx, gy, 3, 0), g = bil(col, gx, gy, 3, 1), b = bil(col, gx, gy, 3, 2);
+    let k = cls === 0 ? 1 : 0.35 + 1.05 * shade;
+    if (cls === 0) { const sheen = 0.9 + 0.2 * vnoise(px / 9, py / 3, 9); r *= sheen; g *= sheen; b *= sheen * 1.1; }
+    if (cls === 5 && (px % 6 === 0 || py % 6 === 0)) k *= 0.62;
+    r *= k; g *= k; b *= k;
+    const bnd = Math.floor(e / 20); band[py * W + px] = bnd;
+    const o = (py * W + px) * 4;
+    if (cls !== 0 && px > 0 && py > 0 && (band[py * W + px - 1] !== bnd || band[(py - 1) * W + px] !== bnd)) {
+      const idx = bnd % 5 === 0;
+      r = r * 0.7 + (idx ? 70 : 38); g = g * 0.7 + (idx ? 62 : 36); b = b * 0.7 + (idx ? 46 : 30);
+    }
+    // vignette
+    const vx = px / W - 0.5, vy = py / H - 0.5, v = 1 - 0.55 * (vx * vx + vy * vy);
+    d[o] = r * v; d[o + 1] = g * v; d[o + 2] = b * v; d[o + 3] = 255;
+  }
+  tx.putImageData(img, 0, 0);
+  // Roads (cosmetic)
+  tx.lineCap = "round"; tx.lineJoin = "round";
+  const roads = [[0, 1], [0, 3], [1, 2], [2, 3], [2, 5], [2, 4], [4, 5], [1, 4]];
+  for (const pass of [[3.2, "rgba(0,0,0,.45)"], [1.3, "rgba(206,196,170,.42)"]]) {
+    tx.lineWidth = pass[0]; tx.strokeStyle = pass[1];
+    for (const [a, b] of roads) {
+      const A = TOWNS[a], B = TOWNS[b], mx = (A.x + B.x) / 2 + (vnoise(a, b, 3) - 0.5) * 16, my = (A.y + B.y) / 2 + (vnoise(b, a, 4) - 0.5) * 16;
+      tx.beginPath(); tx.moveTo((A.x + 0.5) * TS, (A.y + 0.5) * TS); tx.quadraticCurveTo((mx + 0.5) * TS, (my + 0.5) * TS, (B.x + 0.5) * TS, (B.y + 0.5) * TS); tx.stroke();
+    }
+  }
+}
+
+let DPR = 1, CW = 0, CH = 0;
+function resize() {
+  const r = $("mapWrap").getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  CW = Math.max(1, Math.round(r.width * DPR)); CH = Math.max(1, Math.round(r.height * DPR));
+  canvas.width = CW; canvas.height = CH;
+}
+
+function residence(w) { return 0.04 + 0.006 * w; } // flaming residence time, hours
+
+function paintFire(now) {
+  const d = fireImg.data, id = isoImg.data, t = S.t;
+  const burning = S.burningList; burning.length = 0;
+  let alight = 0, burnt = 0;
+  for (let i = 0; i < N; i++) {
+    const ti = S.T[i], o = i * 4;
+    id[o + 3] = 0;
+    if (ti > t) {
+      d[o + 3] = 0;
+      if (S.iso && S.started && isFinite(ti)) {
+        const h = ti - t;
+        if (h < 3) {
+          const b = Math.floor(h), x = i % NX;
+          const nb = x < NX - 1 ? Math.floor(S.T[i + 1] - t) : b, nd = i + NX < N ? Math.floor(S.T[i + NX] - t) : b;
+          if (nb !== b || nd !== b) { id[o] = 255; id[o + 1] = 176; id[o + 2] = 0; id[o + 3] = b === 0 ? 230 : b === 1 ? 140 : 80; }
+        }
+      }
+      continue;
+    }
+    burnt++;
+    const age = t - ti, res = residence(land.fuel[i]);
+    if (age < res) {
+      alight++; burning.push(i);
+      const p = age / res, fl = 0.8 + 0.2 * hash2(i, (now / 90) | 0, 5);
+      d[o] = 255 * fl; d[o + 1] = (235 - 205 * Math.sqrt(p)) * fl; d[o + 2] = (150 - 150 * Math.min(1, p * 3)) * fl; d[o + 3] = 255;
+    } else {
+      const cool = Math.max(0, 1 - (age - res) / 0.8);
+      d[o] = 16 + 120 * cool * cool * cool; d[o + 1] = 11 + 16 * cool * cool * cool; d[o + 2] = 9; d[o + 3] = 225;
+    }
+  }
+  fireX.putImageData(fireImg, 0, 0);
+  if (S.iso) isoX.putImageData(isoImg, 0, 0);
+  glowX.clearRect(0, 0, glowC.width, glowC.height);
+  glowX.imageSmoothingEnabled = true;
+  glowX.drawImage(fireC, 0, 0, glowC.width, glowC.height);
+  return { alight, burnt };
+}
+
+function spawnEmbers(dtReal) {
+  if (!S.burningList.length) return;
+  const F = currentFFDI(), [ux, uy] = Model.spreadVector(S.wx.windFrom);
+  const rate = Math.min(90, 4 + S.burningList.length * 0.25) * (0.4 + Math.min(1.6, F / 60));
+  let n = rate * dtReal; if (Math.random() < n % 1) n++;
+  for (let k = 0; k < (n | 0) && S.embers.length < 500; k++) {
+    const i = S.burningList[(Math.random() * S.burningList.length) | 0];
+    const sp = 2 + S.wx.wind / 7;
+    S.embers.push({ x: (i % NX) + Math.random(), y: ((i / NX) | 0) + Math.random(),
+      vx: ux * sp * (0.6 + Math.random()) + (Math.random() - 0.5) * 2, vy: uy * sp * (0.6 + Math.random()) + (Math.random() - 0.5) * 2,
+      life: 0, max: 0.6 + Math.random() * 1.6 });
+  }
+}
+
+function drawMap(now) {
+  const kx = CW / NX, ky = CH / NY;
+  ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(terrain, 0, 0, CW, CH);
+  // 1 km grid
+  ctx.strokeStyle = "rgba(120,200,230,.07)"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 10; x < NX; x += 10) { const X = Math.round(x * kx) + 0.5; ctx.moveTo(X, 0); ctx.lineTo(X, CH); }
+  for (let y = 10; y < NY; y += 10) { const Y = Math.round(y * ky) + 0.5; ctx.moveTo(0, Y); ctx.lineTo(CW, Y); }
+  ctx.stroke();
+  // fire + char
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(fireC, 0, 0, CW, CH);
+  // glow
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.55; ctx.drawImage(glowC, -kx * 2, -ky * 2, CW + kx * 4, CH + ky * 4);
+  ctx.globalAlpha = 0.3; ctx.drawImage(glowC, -kx * 6, -ky * 6, CW + kx * 12, CH + ky * 12);
+  // embers
+  ctx.globalAlpha = 1;
+  for (const e of S.embers) {
+    const a = 1 - e.life / e.max, r = (0.9 + a) * DPR;
+    ctx.fillStyle = `rgba(255,${(120 + 110 * a) | 0},40,${a.toFixed(2)})`;
+    ctx.fillRect(e.x * kx - r / 2, e.y * ky - r / 2, r, r);
+  }
+  ctx.globalCompositeOperation = "source-over";
+  // isochrones
+  if (S.iso && S.started) { ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 0.9; ctx.drawImage(isoC, 0, 0, CW, CH); ctx.globalAlpha = 1; }
+  // ignition markers
+  for (const g of S.ignitions) {
+    const X = (g.x + 0.5) * kx, Y = (g.y + 0.5) * ky, r = (g.spot ? 2.5 : 6) * DPR;
+    ctx.strokeStyle = g.spot ? "rgba(255,176,0,.6)" : "#fff"; ctx.lineWidth = 1.2 * DPR;
+    ctx.beginPath(); ctx.moveTo(X - r, Y); ctx.lineTo(X + r, Y); ctx.moveTo(X, Y - r); ctx.lineTo(X, Y + r); ctx.stroke();
+    if (!g.spot) { ctx.beginPath(); ctx.arc(X, Y, r * 1.4, 0, Math.PI * 2); ctx.stroke(); }
+  }
+  // towns
+  const fs = Math.max(9, Math.min(12, CW / DPR / 70)) * DPR;
+  ctx.font = `600 ${fs}px "IBM Plex Sans Condensed", sans-serif`; ctx.textBaseline = "middle";
+  TOWNS.forEach((t, k) => {
+    const st = S.townState[k].status, X = (t.x + 0.5) * kx, Y = (t.y + 0.5) * ky, R = t.r * kx;
+    const c = st === "impact" ? "#ff3b30" : st === "threat" ? "#ff6a13" : st === "watch" ? "#ffb000" : "#dfe8ee";
+    ctx.strokeStyle = c; ctx.lineWidth = 1.2 * DPR;
+    if (st === "threat" || st === "impact") {
+      const p = (now / 900) % 1;
+      ctx.globalAlpha = 1 - p; ctx.beginPath(); ctx.arc(X, Y, R + (6 + 18 * p) * DPR, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    ctx.setLineDash([3 * DPR, 2 * DPR]); ctx.beginPath(); ctx.arc(X, Y, R + 2 * DPR, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    const label = t.name.toUpperCase(), sub = fmtInt(t.pop);
+    const lx = X + R + 6 * DPR, ly = Y - fs * 0.35;
+    ctx.lineWidth = 3 * DPR; ctx.strokeStyle = "rgba(0,0,0,.8)";
+    const right = lx + ctx.measureText(label).width > CW - 4;
+    ctx.textAlign = right ? "right" : "left";
+    const LX = right ? X - R - 6 * DPR : lx;
+    ctx.strokeText(label, LX, ly); ctx.fillStyle = c; ctx.fillText(label, LX, ly);
+    ctx.font = `400 ${fs * 0.85}px "IBM Plex Mono", monospace`;
+    ctx.strokeText(sub, LX, ly + fs); ctx.fillStyle = "rgba(200,211,219,.75)"; ctx.fillText(sub, LX, ly + fs);
+    ctx.font = `600 ${fs}px "IBM Plex Sans Condensed", sans-serif`;
+  });
+  ctx.textAlign = "left";
+  // river labels
+  ctx.font = `italic 400 ${fs * 0.85}px "IBM Plex Sans Condensed", sans-serif`; ctx.fillStyle = "rgba(110,190,215,.7)";
+  const rv = RIVERS[0].path[Math.floor(RIVERS[0].path.length * 0.13)]; ctx.fillText(RIVERS[0].name.toUpperCase(), rv[0] * kx, (rv[1] + 4) * ky);
+  const rv2 = RIVERS[1].path[Math.floor(RIVERS[1].path.length * 0.3)]; ctx.fillText(RIVERS[1].name.toUpperCase(), (rv2[0] + 3) * kx, rv2[1] * ky);
+  // north arrow + scale bar + wind
+  const pad = 12 * DPR;
+  ctx.fillStyle = "rgba(6,8,10,.7)"; ctx.fillRect(CW - pad - 118 * DPR, CH - pad - 26 * DPR, 118 * DPR, 26 * DPR);
+  const sb = 20 * kx; // 2 km
+  ctx.fillStyle = "#dfe8ee"; ctx.fillRect(CW - pad - 8 * DPR - sb, CH - pad - 9 * DPR, sb / 2, 3 * DPR);
+  ctx.fillStyle = "#4a5863"; ctx.fillRect(CW - pad - 8 * DPR - sb / 2, CH - pad - 9 * DPR, sb / 2, 3 * DPR);
+  ctx.font = `400 ${9 * DPR}px "IBM Plex Mono", monospace`; ctx.fillStyle = "#9fb0bb"; ctx.textAlign = "right";
+  ctx.fillText("2 KM", CW - pad - 8 * DPR, CH - pad - 18 * DPR);
+  ctx.textAlign = "left"; ctx.fillText("0", CW - pad - 8 * DPR - sb, CH - pad - 18 * DPR);
+  const wx = CW - pad - 16 * DPR, wy = pad + 16 * DPR;
+  ctx.fillStyle = "rgba(6,8,10,.7)"; ctx.beginPath(); ctx.arc(wx, wy, 15 * DPR, 0, Math.PI * 2); ctx.fill();
+  ctx.save(); ctx.translate(wx, wy); ctx.rotate((S.wx.windFrom + 180) * Math.PI / 180);
+  ctx.strokeStyle = "#ff6a13"; ctx.fillStyle = "#ff6a13"; ctx.lineWidth = 2 * DPR;
+  ctx.beginPath(); ctx.moveTo(0, 9 * DPR); ctx.lineTo(0, -6 * DPR); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -11 * DPR); ctx.lineTo(4.5 * DPR, -4 * DPR); ctx.lineTo(-4.5 * DPR, -4 * DPR); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "#dfe8ee"; ctx.textAlign = "center"; ctx.font = `600 ${9 * DPR}px "IBM Plex Sans Condensed", sans-serif`;
+  ctx.fillText("N ▲", wx, wy + 25 * DPR); ctx.textAlign = "left";
+  // hover crosshair
+  if (hoverCell >= 0) {
+    const X = ((hoverCell % NX) + 0.5) * kx, Y = (((hoverCell / NX) | 0) + 0.5) * ky;
+    ctx.strokeStyle = "rgba(255,176,0,.55)"; ctx.lineWidth = 1;
+    ctx.strokeRect(X - kx * 1.5, Y - ky * 1.5, kx * 3, ky * 3);
+  }
+}
+
+/* =====================================================================
+   8. SIMULATION LOOP
+   ===================================================================== */
+function ignite(x, y, spot = false) {
+  x = Math.max(0, Math.min(NX - 1, Math.round(x))); y = Math.max(0, Math.min(NY - 1, Math.round(y)));
+  const i = y * NX + x;
+  if (land.fuel[i] <= 0) { log("SYS", `Ignition rejected at ${gridRef(i)}: ${FUELS[land.cls[i]].name.toLowerCase()} is not burnable`); return false; }
+  if (S.T[i] <= S.t) return false;
+  const first = !S.started;
+  S.started = true; S.ended = false;
+  S.pending.push([i, S.t]); S.ignitions.push({ x, y, t: S.t, spot });
+  recompute();
+  $("hint").hidden = true;
+  const fuel = FUELS[land.cls[i]], F = currentFFDI();
+  if (spot) log("SPOT", `Spot fire ${gridRef(i)} in ${fuel.name.toLowerCase()} — ember transport ahead of main front`);
+  else log("IGN", `${first ? "Fire start" : "New ignition"} ${gridRef(i)} · ${fuel.name.toLowerCase()} · elev ${Math.round(land.elev[i])} m · head ROS ${Model.rateOfSpread(F, land.fuel[i]).toFixed(2)} km/h`);
+  if (first) {
+    const soon = TOWNS.map((t, k) => ({ t, eta: Math.min(...townCells[k].foot.map((j) => S.T[j])) - S.t })).filter((o) => isFinite(o.eta)).sort((a, b) => a.eta - b.eta)[0];
+    if (soon) log("MODEL", `Projection: first township impact ${soon.t.name} in ${hhmm(soon.eta)} under current conditions`);
+  }
+  setStatus();
+  return true;
+}
+
+function maybeSpot(dtH) {
+  const F = currentFFDI();
+  if (!S.spot || F < 25 || !S.burningList.length) return;
+  const lambda = 1.6 * (F - 25) / 25 * Math.min(1, S.burningList.length / 40); // spot fires per sim-hour
+  if (Math.random() >= lambda * dtH) return;
+  const src = S.burningList[(Math.random() * S.burningList.length) | 0];
+  const meanKm = 0.008 * F, distKm = Math.min(6, -Math.log(1 - Math.random()) * meanKm);
+  if (distKm < 0.4) return;
+  const ang = (S.wx.windFrom + 180 + (Math.random() + Math.random() - 1) * 18) * Math.PI / 180;
+  const x = (src % NX) + Math.sin(ang) * distKm * 10, y = ((src / NX) | 0) - Math.cos(ang) * distKm * 10;
+  if (x < 0 || y < 0 || x >= NX || y >= NY) return;
+  const j = Math.round(y) * NX + Math.round(x);
+  if (land.fuel[j] <= 0 || S.T[j] <= S.t + 0.05) return;
+  ignite(x, y, true);
+}
+
+function setStatus() {
+  const el = $("tbStatus");
+  const anyImpact = S.townState.some((s) => s.status === "impact" || s.status === "threat");
+  if (!S.started) el.innerHTML = `<span class="led"></span>STANDBY`;
+  else if (S.ended) el.innerHTML = `<span class="led warn"></span>FIRE BURNT OUT`;
+  else if (!S.running) el.innerHTML = `<span class="led warn"></span>PAUSED`;
+  else el.innerHTML = `<span class="led ${anyImpact ? "alert" : "warn"}"></span>${anyImpact ? "EMERGENCY" : "FIRE ACTIVE"}`;
+}
+
+let lastUI = 0;
+function updatePanels(stats) {
+  const { exposed, popRisk, popSoon } = updateTowns();
+  const area = stats.burnt * (CELL_M * CELL_M) / 10000;
+  $("kArea").querySelector(".v").innerHTML = `${fmtInt(area)} <small>ha</small>`;
+  $("kArea").querySelector(".s").textContent = `${fmtInt(stats.alight)} cells alight · ${(area / 100).toFixed(1)} km²`;
+  $("kTowns").querySelector(".v").innerHTML = `${exposed} <small>/ ${TOWNS.length}</small>`;
+  $("kTowns").classList.toggle("alert", exposed > 0);
+  $("kPop").querySelector(".v").textContent = fmtInt(popRisk);
+  $("kPop").querySelector(".s").textContent = popSoon ? `+${fmtInt(popSoon)} projected within 3 h` : S.started ? "none projected within 3 h" : "—";
+  $("kPop").classList.toggle("alert", popRisk > 0); $("kPop").classList.toggle("warn", !popRisk && popSoon > 0);
+  const kt = $("kTime");
+  if (!S.started) { kt.querySelector(".v").textContent = "—"; kt.querySelector(".s").textContent = "awaiting ignition"; }
+  else if (S.firstImpact) { kt.querySelector(".v").textContent = hhmm(S.firstImpact.t - S.ignitions[0].t); kt.querySelector(".s").textContent = `actual · ${S.firstImpact.name}`; }
+  else {
+    const soon = S.townState.map((s, k) => ({ eta: s.eta, k })).filter((o) => isFinite(o.eta)).sort((a, b) => a.eta - b.eta)[0];
+    kt.querySelector(".v").textContent = soon ? "≈" + hhmm(S.t - S.ignitions[0].t + soon.eta) : "none";
+    kt.querySelector(".s").textContent = soon ? `projected · ${TOWNS[soon.k].name}` : "no township in projected path";
+  }
+  kt.classList.toggle("alert", !!S.firstImpact); kt.classList.toggle("warn", S.started && !S.firstImpact);
+  $("impState").textContent = !S.started ? "NO ACTIVE FIRE" : S.ended ? "FIRE BURNT OUT" : `${S.ignitions.length} IGNITION${S.ignitions.length > 1 ? "S" : ""} · ${S.ignitions.filter((g) => g.spot).length} SPOT`;
+  for (const m of [100, 1000, 5000, 10000]) if (area >= m && !S.milestones.has(m)) { S.milestones.add(m); log("SYS", `Fire area passed ${fmtInt(m)} ha`); }
+  renderRanking(); setStatus();
+  const el = S.started ? S.t - S.ignitions[0].t : 0;
+  $("simClock").textContent = clockAt(S.t); $("simElapsed").textContent = "T+" + hhmm(el);
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (S.started && S.running && !S.ended) {
+    const dtH = dt * S.speed * SIM_H_PER_SEC;
+    S.t += dtH;
+    maybeSpot(dtH);
+  }
+  const stats = paintFire(now);
+  if (S.started && !S.ended && stats.alight === 0) {
+    let pending = false; for (let i = 0; i < N; i++) if (S.T[i] > S.t && isFinite(S.T[i])) { pending = true; break; }
+    if (!pending) { S.ended = true; log("SYS", `Fire burnt out — final area ${fmtInt(stats.burnt)} ha`); }
+  }
+  if (S.running) spawnEmbers(dt);
+  for (const e of S.embers) { e.life += dt; e.x += e.vx * dt; e.y += e.vy * dt; }
+  S.embers = S.embers.filter((e) => e.life < e.max);
+  drawMap(now);
+  if (now - lastUI > 200) { lastUI = now; updatePanels(stats); }
+  requestAnimationFrame(frame);
+}
+
+function reset() {
+  S.t = 0; S.started = false; S.ended = false; S.T = new Float64Array(N).fill(Infinity); S.pending = [];
+  S.ignitions = []; S.firstImpact = null; S.embers = []; S.milestones = new Set();
+  S.townState.forEach((s) => { s.status = "safe"; s.eta = Infinity; s.dist = Infinity; });
+  $("hint").hidden = false;
+  log("SYS", "Simulation reset — all fire cleared");
+  updatePanels({ burnt: 0, alight: 0 });
+}
+
+/* =====================================================================
+   9. INPUT
+   ===================================================================== */
+function applyPreset(id) {
+  const p = PRESETS.find((q) => q.id === id); if (!p) return;
+  S.preset = id;
+  setWeather({ temp: p.temp, rh: p.rh, wind: p.wind, df: p.df, windFrom: p.from }, "preset");
+  log("WX", `Scenario ${p.name}: ${p.temp} °C, RH ${p.rh} %, ${compass16(p.from)} ${p.wind} km/h, DF ${p.df} → FFDI ${currentFFDI().toFixed(1)}`);
+}
+
+function initInputs() {
+  $("presets").innerHTML = PRESETS.map((p) => `<button class="btn${p.wide ? " wide" : ""}" data-id="${p.id}" data-testid="preset-${p.id}">${p.name}<small>${p.note}</small></button>`).join("");
+  $("presets").addEventListener("click", (e) => { const b = e.target.closest(".btn"); if (b) applyPreset(b.dataset.id); });
+
+  for (const [k, [sid]] of Object.entries(sliders)) {
+    const el = $(sid);
+    el.addEventListener("input", () => setWeather({ [k]: parseFloat(el.value) }));
+    el.addEventListener("change", () => log("WX", `${el.labels[0].textContent} set to ${$(sliders[k][1]).textContent} → FFDI ${currentFFDI().toFixed(1)}`));
+  }
+
+  const comp = $("compass");
+  let dragging = false, dragStart = null;
+  const fromPointer = (e) => {
+    const r = comp.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const deg = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+    setWeather({ windFrom: Math.round(deg / 5) * 5 % 360 });
+  };
+  comp.addEventListener("pointerdown", (e) => { dragging = true; dragStart = S.wx.windFrom; comp.setPointerCapture(e.pointerId); fromPointer(e); });
+  comp.addEventListener("pointermove", (e) => { if (dragging) fromPointer(e); });
+  const end = () => { if (!dragging) return; dragging = false; if (dragStart !== S.wx.windFrom) log("WX", `Wind now from ${pad3(S.wx.windFrom)}° ${compass16(S.wx.windFrom)} at ${S.wx.wind} km/h`); };
+  comp.addEventListener("pointerup", end); comp.addEventListener("pointercancel", end);
+  comp.addEventListener("keydown", (e) => {
+    const d = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[e.key];
+    if (d) { e.preventDefault(); setWeather({ windFrom: (S.wx.windFrom + d + 360) % 360 }); }
+  });
+
+  $("btnChange").addEventListener("click", () => {
+    setWeather({ windFrom: 235, wind: Math.max(35, Math.round(S.wx.wind * 0.8)), temp: Math.max(15, S.wx.temp - 7), rh: Math.min(100, S.wx.rh + 14) });
+    log("WX", `SOUTH-WESTERLY CHANGE: wind ${S.wx.wind} km/h from 235° — eastern flank becomes a broad head fire`);
+  });
+
+  $("speeds").innerHTML = SPEEDS.map((s) => `<button class="btn${s.k === S.speed ? " on" : ""}" data-k="${s.k}" data-testid="speed-${s.k}">${s.l}</button>`).join("");
+  $("speeds").addEventListener("click", (e) => {
+    const b = e.target.closest(".btn"); if (!b) return;
+    S.speed = parseFloat(b.dataset.k); S.running = true; syncPlay();
+    document.querySelectorAll("#speeds .btn").forEach((x) => x.classList.toggle("on", x === b));
+  });
+  $("btnPlay").addEventListener("click", togglePlay);
+  $("btnReset").addEventListener("click", reset);
+  $("btnDemo").addEventListener("click", demo);
+  $("btnIso").addEventListener("click", (e) => { S.iso = !S.iso; e.currentTarget.classList.toggle("on", S.iso); e.currentTarget.setAttribute("aria-pressed", S.iso); });
+  $("btnSpot").addEventListener("click", (e) => { S.spot = !S.spot; e.currentTarget.classList.toggle("on", S.spot); e.currentTarget.setAttribute("aria-pressed", S.spot); log("SYS", `Ember spotting ${S.spot ? "enabled" : "disabled"}`); });
+
+  const cellAt = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * NX - 0.5, (e.clientY - r.top) / r.height * NY - 0.5]; };
+  canvas.addEventListener("click", (e) => { const [x, y] = cellAt(e); ignite(x, y); });
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch") return;
+    const [x, y] = cellAt(e), cx = Math.round(x), cy = Math.round(y);
+    if (cx < 0 || cy < 0 || cx >= NX || cy >= NY) return;
+    hoverCell = cy * NX + cx; showHover(hoverCell);
+  });
+  canvas.addEventListener("pointerleave", () => { hoverCell = -1; $("hover").hidden = true; });
+  canvas.addEventListener("keydown", (e) => { if (e.key === "Enter") demo(); });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input,button,[role=slider]")) return;
+    if (e.key === " ") { e.preventDefault(); togglePlay(); }
+    else if (e.key === "r" || e.key === "R") reset();
+    else if (e.key === "d" || e.key === "D") demo();
+  });
+}
+
+let hoverCell = -1;
+function showHover(i) {
+  const el = $("hover"), x = i % NX, y = (i / NX) | 0;
+  let slope = 0;
+  if (x > 0 && x < NX - 1 && y > 0 && y < NY - 1) {
+    const gx = (land.elev[i + 1] - land.elev[i - 1]) / (2 * CELL_M), gy = (land.elev[i + NX] - land.elev[i - NX]) / (2 * CELL_M);
+    slope = Math.atan(Math.hypot(gx, gy)) * 180 / Math.PI;
+  }
+  const ti = S.T[i];
+  const fire = !S.started ? "—" : ti <= S.t ? `burnt at ${clockAt(ti)}` : isFinite(ti) ? `ETA ${hhmm(ti - S.t)}` : "not reached";
+  el.innerHTML = `<div><span class="k">${gridRef(i)}</span></div><div>${FUELS[land.cls[i]].name}</div>` +
+    `<div><span class="k">fuel </span>${land.fuel[i].toFixed(1)} t/ha <span class="k">elev </span>${Math.round(land.elev[i])} m</div>` +
+    `<div><span class="k">slope </span>${slope.toFixed(1)}° <span class="k">ROS </span>${Model.rateOfSpread(currentFFDI(), land.fuel[i]).toFixed(2)} km/h</div>` +
+    `<div><span class="k">fire </span>${fire}</div>`;
+  el.hidden = false;
+}
+
+function togglePlay() { S.running = !S.running; syncPlay(); }
+function syncPlay() { $("btnPlay").textContent = S.running ? "❚❚ PAUSE" : "▶ RUN"; setStatus(); }
+
+function demo() {
+  // Ignite in the forested ranges upwind of the townships under current wind
+  const [ux, uy] = Model.spreadVector(S.wx.windFrom);
+  const tx = 92, ty = 55; // Wattle Creek, centre of sector
+  for (let dist = 64; dist > 10; dist -= 2) {
+    const x = Math.round(tx - ux * dist), y = Math.round(ty - uy * dist);
+    if (x < 2 || y < 2 || x >= NX - 2 || y >= NY - 2) continue;
+    if (land.cls[y * NX + x] >= 3 && land.cls[y * NX + x] <= 4) { ignite(x, y); return; }
+  }
+  ignite(tx - ux * 20, ty - uy * 20);
+}
+
+/* =====================================================================
+   10. BOOT
+   ===================================================================== */
+function legend() {
+  const sw = FUELS.map((f) => `<span><i style="background:rgb(${f.rgb.map((c) => Math.min(255, c * 1.25)).join(",")})"></i>${f.name}${f.w ? ` · ${f.w} t/ha` : ""}</span>`);
+  sw.push(`<span><i style="background:#ffa040"></i>Flaming</span>`, `<span><i style="background:#2a120c"></i>Burnt</span>`, `<span><i style="background:transparent;border-color:#ffb000"></i>Projected front +1/2/3 h</span>`);
+  $("legend").innerHTML = sw.join("");
+}
+
+function tick() { $("tbClock").textContent = new Date().toLocaleTimeString("en-AU", { hour12: false }); }
+
+buildGauge(); buildCompass(); renderTerrain(); legend(); initInputs();
+resize();
+new ResizeObserver(resize).observe($("mapWrap"));
+log("SYS", "EMBER console online · sector grid 18.0 × 11.2 km at 100 m resolution");
+log("MODEL", "McArthur Mk5 FFDI (Noble 1980) · ROS = 0.0012·FFDI·W·e^0.069θ · 16-neighbour min-travel-time CA");
+applyPreset("bs");
+updateTownRisk();
+updatePanels({ burnt: 0, alight: 0 });
+log("SYS", "Click the map to ignite, or use ⚑ DEMO IGNITION");
+tick(); setInterval(tick, 1000);
+requestAnimationFrame(frame);
+
+// Test / automation hooks
+window.EMBER = {
+  Model, land, TOWNS, state: S,
+  ignite, applyPreset, setWeather, reset, demo,
+  advance(hours) { S.t += hours; },
+};
+</script>
+</body>
+</html>

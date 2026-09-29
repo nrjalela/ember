@@ -1,0 +1,12 @@
+{
+  "name": "ember",
+  "private": true,
+  "description": "Dev-only tooling for EMBER. The site itself is a single index.html with no build step.",
+  "scripts": {
+    "test": "playwright test",
+    "validate": ".venv/bin/pytest -q validation"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}
