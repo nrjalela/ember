@@ -154,6 +154,7 @@ test.describe('EMBER console', () => {
 
 const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900 },
+  { name: 'laptop', width: 1200, height: 800 },
   { name: 'tablet', width: 834, height: 1112 },
   { name: 'mobile', width: 390, height: 844 },
 ];
@@ -166,16 +167,18 @@ for (const vp of VIEWPORTS) {
     await page.evaluate(() => document.fonts.ready);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
+    const tableFits = await page.evaluate(() => { const t = document.querySelector('[data-testid=rank-body]').closest('table'); return t.scrollWidth <= t.parentElement.clientWidth; });
+    expect(tableFits).toBe(true);
     await expect(page.getByTestId('map')).toBeVisible();
     const map = await page.getByTestId('map').boundingBox();
-    expect(map.width).toBeGreaterThan(vp.width * (vp.name === 'desktop' ? 0.4 : 0.9));
+    expect(map.width).toBeGreaterThan(vp.width * (vp.width >= 1200 ? 0.4 : 0.9));
     // Deterministic mid-fire scene for the screenshot
     await page.evaluate(() => { Math.random = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })(); });
     await page.getByTestId('btn-demo').click();
     await page.getByTestId('speed-4').click();
     await page.waitForTimeout(5000);
     await page.getByTestId('btn-play').click();
-    await page.screenshot({ path: `screenshots/${vp.name}.png`, fullPage: vp.name !== 'desktop' });
+    await page.screenshot({ path: `screenshots/${vp.name}.png`, fullPage: !['desktop', 'laptop'].includes(vp.name) });
     expect(errors).toEqual([]);
   });
 }
