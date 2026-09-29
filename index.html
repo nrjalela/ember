@@ -805,7 +805,7 @@ function renderRanking() {
     const label = { safe: "CLEAR", advice: "ADVICE", watch: "WATCH", threat: "EMERG", impact: "IMPACT" }[r.s.status];
     return `<tr data-town="${r.t.name}"><td>${n + 1}</td><td>${r.t.name}</td><td class="num">${fmtInt(r.t.pop)}</td>` +
       `<td class="col-risk"><span class="rbar"><b style="width:${r.s.risk.toFixed(0)}%;background:${r.s.risk > 66 ? "var(--red)" : r.s.risk > 33 ? "var(--amber)" : "var(--green)"}"></b></span>${r.s.risk.toFixed(0)}</td>` +
-      `<td class="num">${r.s.status === "impact" ? "NOW" : isFinite(r.s.eta) && r.s.eta < 48 ? hhmm(r.s.eta) : "—"}</td><td><span class="st ${r.s.status}">${label}</span></td></tr>`;
+      `<td class="num">${r.s.status === "impact" ? "NOW" : r.s.eta < 1 / 60 ? "&lt;1 min" : isFinite(r.s.eta) && r.s.eta < 48 ? hhmm(r.s.eta) : "—"}</td><td><span class="st ${r.s.status}">${label}</span></td></tr>`;
   }).join("");
 }
 
